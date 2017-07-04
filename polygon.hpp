@@ -4,6 +4,7 @@
 #include "coord.hpp"
 #include "meta.hpp"
 
+#include <algorithm>
 #include <vector>
 #include <memory>
 #include <typeindex>
@@ -17,17 +18,15 @@ struct non_convex_polygon_tag : general_polygon_tag {};
 struct simple_polygon_tag : general_polygon_tag {};
 struct convex_polygon_tag : simple_polygon_tag {};
 struct concave_polygon_tag : non_convex_polygon_tag, simple_polygon_tag {};
-struct convex_star_shaped_polygon_tag : convex_polygon_tag {};
-struct concave_star_shaped_polygon_tag : concave_polygon_tag {};
-struct self_intersecting_polygon_tag {};
+struct self_intersecting_polygon_tag : general_polygon_tag {};
 
 template <typename Polygon, typename = void> struct polygon_traits {};
 
 template <typename Polygon>
 struct polygon_traits<Polygon, std::enable_if_t<std::conjunction_v<
-    std::is_base_of<general_polygon_tag, typename Polygon::polygon_category_tag>>,
-    meta::always_true<typename Polygon::value_type>
-  >>
+    std::is_base_of<general_polygon_tag, typename Polygon::polygon_category_tag>,
+    std::is_arithmetic<typename Polygon::value_type>
+  >>>
 {
   using polygon_category_tag = typename Polygon::polygon_category_tag;
   using value_type = typename Polygon::value_type;
@@ -69,6 +68,7 @@ private:
     virtual auto clone() const -> std::unique_ptr<interface> = 0;
 
     virtual auto is_convex() const -> bool = 0;
+    virtual auto is_concave() const -> bool = 0;
     virtual auto is_simple() const -> bool = 0;
 
     virtual auto vertices() const -> std::vector<coord<value_type>> = 0;
@@ -94,12 +94,33 @@ private:
       return std::is_base_of_v<convex_polygon_tag, typename polygon_traits<Polygon>::polygon_category_tag>;
     }
 
+    auto is_concave() const -> bool override {
+      return std::is_base_of_v<concave_polygon_tag, typename polygon_traits<Polygon>::polygon_category_tag>;
+    }
+
     auto is_simple() const -> bool override {
       return std::is_base_of_v<simple_polygon_tag, typename polygon_traits<Polygon>::polygon_category_tag>;
     }
 
     auto vertices() const -> std::vector<coord<value_type>> override {
-      return detail::invoke_vertices(polygon_);
+      if constexpr (std::is_same_v<value_type, typename polygon_traits<Polygon>::value_type>)
+      {
+        return detail::invoke_vertices(polygon_);
+      }
+      else
+      {
+        auto vs = detail::invoke_vertices(polygon_);
+
+        auto result = std::vector<coord<value_type>>();
+        result.reserve(vs.size());
+
+        std::transform(vs.begin(), vs.end(), std::back_inserter(result),
+          [](const auto& c) -> coord<value_type> {
+            return {static_cast<value_type>(c.x), static_cast<value_type>(c.y)};
+          });
+
+        return result;
+      }
     }
 
     auto underlying_type() const -> std::type_index override {
@@ -133,9 +154,9 @@ public:
 
   decltype(auto) is_convex() const { return data_->is_convex(); }
 
-  decltype(auto) is_simple() const { return data_->is_simple(); }
+  decltype(auto) is_concave() const { return data_->is_concave(); }
 
-  decltype(auto) boundary(double t) const { return data_->boundary(t); }
+  decltype(auto) is_simple() const { return data_->is_simple(); }
 
   decltype(auto) vertices() const { return data_->vertices(); };
 
@@ -144,6 +165,8 @@ public:
   template <typename Polygon> decltype(auto) downcast() { return data_->template downcast<Polygon>(); }
 
   template <typename Polygon> decltype(auto) downcast() const { return data_->template downcast<Polygon>(); }
+
+  decltype(auto) category() const { return data_->category(); }
 
 private:
   std::unique_ptr<interface> data_;
