@@ -14,11 +14,12 @@ struct square
   double x, y;
   double length;
 
-  auto vertices() const -> std::vector<coord<value_type>> {
+  auto vertices() const -> std::vector<coord<value_type>>
+  {
     return {{x, y}, {x + length, y}, {x + length, y + length}, {x, y + length}};
   }
 };
 
-}
+} // namespace geometry
 
 #endif // SQUARE_HPP_INCLUDED
