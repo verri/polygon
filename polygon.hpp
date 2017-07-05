@@ -2,7 +2,6 @@
 #define POLYGON_HPP_INCLUDED
 
 #include "coord.hpp"
-#include "meta.hpp"
 
 #include <algorithm>
 #include <vector>
@@ -36,16 +35,20 @@ struct polygon_traits<Polygon, std::enable_if_t<std::conjunction_v<
 namespace detail
 {
 
-template <typename Polygon>
-using free_vertices = decltype(vertices(std::declval<const Polygon&>()));
+template <typename Polygon, typename = void>
+struct has_free_vertices : std::false_type {};
 
 template <typename Polygon>
-constexpr auto has_free_vertices = meta::compiles<Polygon, detail::free_vertices>::value;
+struct has_free_vertices<Polygon, std::void_t<decltype(vertices(std::declval<const Polygon&>()))>> :
+  std::true_type {};
+
+template <typename Polygon>
+static constexpr auto has_free_vertices_v = has_free_vertices<Polygon>::value;
 
 template <typename Polygon, typename Point = coord<typename polygon_traits<Polygon>::value_type>>
 auto invoke_vertices(const Polygon& polygon) -> std::vector<Point>
 {
-  if constexpr (has_free_vertices<Polygon>)
+  if constexpr (has_free_vertices_v<Polygon>)
     return vertices(polygon);
   else
     return polygon.vertices();
